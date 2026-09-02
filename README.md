@@ -10,7 +10,7 @@ npm run dev
 
 `?debug=1` logs every event with its dedupe key to the console.
 
-## Seven files
+## Seven source files
 
 ```
 src/
@@ -22,7 +22,6 @@ src/
 ├── screens.tsx       3 screens + validation + shared bits              302
 └── styles.css        tokens + styling                                  237
 
-api/lead.ts           server relay: Meta CAPI + your CRM                139
 ```
 
 No context, no provider, no state manager. `App.tsx` holds the state, screens take props, tracking is a module singleton.
@@ -34,7 +33,8 @@ Open `destinations.ts`, write one object, append it to the array:
 ```ts
 const tiktok: Destination = {
   name: 'tiktok',
-  acceptsPii: true,
+  acceptsPii: true,    // may receive event.user (PII)
+  firstParty: false,   // must NOT receive event.private (health answers)
   init(id) { /* load sdk */ },
   send(event) {
     window.ttq?.track('CompleteRegistration', event.params, { event_id: event.id });
@@ -62,7 +62,7 @@ Append to `steps` in `funnel.ts`:
 
 ## Meta event quality
 
-**Dedupe.** Meta merges a browser and a server event only when both carry the same `event_name` **and** the same `event_id`. `track()` generates one UUID and returns it; the Pixel fires with `{ eventID }` and `App.tsx` sends the same value to `/api/lead` → CAPI.
+**Dedupe.** Meta merges a browser and a server event only when both carry the same `event_name` **and** the same `event_id`. `track()` generates one UUID; the Pixel fires with `{ eventID }` and the same value goes to n8n, which reuses it verbatim for CAPI.
 
 > Must be unique **per event**. A user or session id makes every event dedupe into one — silently.
 
@@ -80,7 +80,7 @@ Append to `steps` in `funnel.ts`:
 
 ## The webhook
 
-Full contract in [WEBHOOK.md](WEBHOOK.md).
+Full contract in [n8n/README.md](n8n/README.md).
 
 **Every** event POSTs to `VITE_WEBHOOK_URL`. Until it's set, the payload is logged instead (`?debug=1`) and nothing is sent.
 
@@ -104,7 +104,6 @@ One key routes it:
 | `track_only` | Store only |
 | `meta_capi` | Send to Meta CAPI |
 | `meta_capi_and_crm` | CAPI **and** create the CRM record |
-| `alert` | Notify — a submission failed |
 
 Remap in `ACTIONS` at the top of `destinations.ts`.
 
@@ -117,19 +116,6 @@ Qualification answers are special-category data (health, disability, finances) t
 - `event.private` carries the raw answers and reaches **only** destinations flagged `firstParty` — never Meta.
 - `event.user` (PII) reaches only destinations flagged `acceptsPii`.
 - Ad platforms get `adParams()` instead: `lead_quality_tier`, `lead_score`, `qualified` — same optimization signal, none of the exposure.
-
-## Deploying `api/lead.ts`
-
-Web Fetch types, so: Vercel as-is · Next.js App Router `export const POST = handleLead` · Cloudflare/Deno/Bun `export default { fetch: handleLead }`.
-
-Server-only vars (never `VITE_`-prefixed — that compiles into the public bundle):
-
-```
-META_PIXEL_ID=
-META_CAPI_ACCESS_TOKEN=
-META_TEST_EVENT_CODE=
-LEAD_WEBHOOK_URL=
-```
 
 ## Verifying
 

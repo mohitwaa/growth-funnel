@@ -55,7 +55,7 @@ Use `/webhook-test/` while the canvas is open for a manual run; `/webhook/` once
 
 ## What the nodes guarantee
 
-Everything in [../WEBHOOK.md](../WEBHOOK.md)'s resilience contract is implemented:
+The resilience contract is implemented end to end:
 
 - **CORS** — the Webhook node sets `allowedOrigins: *`, and `Respond 200` returns the header. Without this the browser outbox can't read the status and retries forever.
 - **Idempotency** — the upsert merges on `lead_key`, and each event carries `idempotency_key`. A retried event updates, never duplicates.
@@ -99,3 +99,108 @@ node tools/verify-n8n.mjs
 - **Never hash `send_plain`.** `fbp`, `fbc`, IP and user-agent go in the clear.
 - **Never forward `private` to Meta.** It holds health/disability answers — a policy violation. It belongs in Airtable only.
 - Set `TEST_MODE = true` at the top of the first Code node to land rows as `status: test`.
+
+## Full payload
+
+```jsonc
+{
+  "action": "meta_capi_and_crm",          // ← switch on this
+  "schema_version": 2,
+  "sent_at": "2026-09-02T07:38:10.147Z",
+
+  "event": {
+    "name": "lead_submitted",
+    "id": "a1e323fb-063d-45ae-8538-2e68ce285aa1",   // dedupe key
+    "time": 1788334690,                             // unix seconds
+    "time_iso": "2026-09-02T07:38:10.147Z",
+    "value": 72,
+    "currency": "USD",
+    "params": {
+      "funnel_id": "benefits_qualification",
+      "lead_quality_tier": "A",
+      "lead_score": 100,
+      "qualified": true,
+      "seconds_to_convert": 16,
+      "session_id": "8da4bdce-..."
+    }
+  },
+
+  "identity": {
+    "user_id": "43cb29fb-...",            // stable across sessions
+    "session_id": "8da4bdce-...",
+    "fbp": "fb.1.1788300000000.9988776655",
+    "fbc": "fb.1.1788334672990.FBX1",
+    "user_agent": "Mozilla/5.0 ...",
+    "client_ip": null                     // YOU fill this from the socket
+  },
+
+  "user": {                               // raw PII — hash before sending onward
+    "firstName": "Jordan",
+    "lastName": "Rivera",
+    "email": "jordan.rivera@example.com",
+    "phone": "15551234567",
+    "zip": "90210"
+  },
+
+  "attribution": {
+    "click_ids": { "fbclid": "FBX1", "gclid": "GX1", "utm_source": "meta", "utm_campaign": "q4" },
+    "page_url": "https://...",
+    "referrer": ""
+  },
+
+  "device": { "language": "en-US", "timezone": "Asia/Calcutta", "screen": "1920x1080" },
+
+  "meta": {
+    "should_send": true,
+    "event_name": "Lead",                 // Meta standard event
+    "event_id": "a1e323fb-...",           // same as event.id
+    "event_time": 1788334690,
+    "action_source": "website",
+    "event_source_url": "https://...",
+    "user_data": {
+      "hash_these": {                     // SHA-256 each, exactly as given
+        "em": "jordan.rivera@example.com",
+        "ph": "15551234567",
+        "fn": "jordan",
+        "ln": "rivera",
+        "zp": "90210",
+        "external_id": "43cb29fb-..."
+      },
+      "send_plain": {                     // never hash these
+        "fbp": "fb.1....",
+        "fbc": "fb.1....",
+        "client_user_agent": "Mozilla/5.0 ...",
+        "client_ip_address": null         // YOU fill this
+      }
+    },
+    "custom_data": {
+      "lead_quality_tier": "A", "lead_score": 100, "qualified": true,
+      "value": 72, "currency": "USD"
+    }
+  },
+
+  "private": {                            // ⚠️ CRM ONLY — never to an ad platform
+    "answers": { "age_band": "50_64", "condition_duration": "gt_12m", "...": "..." },
+    "score": { "percent": 100, "grade": "A", "qualified": true },
+    "funnel_version": "v1"
+  }
+}
+```
+
+## Event → Meta standard event
+
+| Our event | Meta | Fires when |
+|---|---|---|
+| `funnel_start` | `ViewContent` | Page load |
+| `funnel_step` | — | Each answer (no Meta event) |
+| `contact_captured` | `InitiateCheckout` | Form submitted, before the request |
+| `lead_submitted` | `Lead` | Lead accepted |
+| `call_clicked` | `Contact` | Phone tapped on the result screen |
+
+## Verify
+
+1. Events Manager → Test Events, with `test_event_code` on the CAPI call
+2. The browser and server event must show **Deduplicated** — not two rows
+3. Event Match Quality should be **8+/10** with `fbp` + IP + UA + hashed email/phone
+
+If you see two rows instead of one, your `event_id` is not matching the Pixel's.

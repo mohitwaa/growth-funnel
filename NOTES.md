@@ -28,7 +28,7 @@ So the diagnosis wasn't "collect more data", it was **"activate the data you alr
 - **Airtable via HTTP Request nodes**, not n8n's Airtable node — uses the exact `performUpsert` call I'd already verified, avoiding node-version drift.
 - **SHA-256 inlined** in the n8n Code nodes: the sandbox disallows `require('crypto')`. Verified byte-identical to `node:crypto`.
 - **Tags load immediately**, not deferred. The reference funnel delays GTM 3s after `window.load`, buying Core Web Vitals at the cost of every conversion and bounce before it fires.
-- **`api/lead.ts` is not wired in.** It's the self-hosted CAPI relay for teams who'd rather not depend on n8n. Kept as a documented alternative, not dead code in the live path.
+- **n8n owns the CAPI call, not the app.** I wrote a self-hosted relay first, then deleted it once n8n proved out — two implementations of the same thing is how they drift.
 
 ## Extra, beyond the brief
 
