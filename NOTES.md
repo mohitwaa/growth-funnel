@@ -40,7 +40,11 @@ So the diagnosis wasn't "collect more data", it was **"activate the data you alr
 
 ## Bugs this process caught
 
-Seven, all found by testing rather than review. Three would have corrupted revenue data while looking healthy: the double-send, retry-as-second-conversion, and out-of-order replay downgrading a completed $72 lead back to a $0.50 partial.
+Nine, all found by testing rather than review. Two came from the n8n dry run
+alone: a `fields[]` query parameter that n8n silently collapsed (duplicate
+object keys), which meant the ordering guard read `undefined` and never fired;
+and the guard depending on that lookup at all. Correctness now sits in the
+mapper, where no network call can undermine it, with the lookup as layer two. Three would have corrupted revenue data while looking healthy: the double-send, retry-as-second-conversion, and out-of-order replay downgrading a completed $72 lead back to a $0.50 partial.
 
 ## Known gaps
 
