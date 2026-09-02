@@ -1,6 +1,9 @@
 /* ---------------------------------------------------------------------------
    Tokens. Every colour and space in the app resolves to one of these.
-   Dark mode redefines tokens only — components never re-specify colour.
+
+   The palette is light, always. `color-scheme: light` pins the UA widgets
+   (scrollbars, autofill, date pickers) to light too, so a visitor in OS dark
+   mode still gets the light form rather than a half-inverted one.
 --------------------------------------------------------------------------- */
 :root {
   color-scheme: light;
@@ -24,30 +27,6 @@
   --shadow: 0 1px 2px rgba(16, 21, 28, 0.06), 0 1px 3px rgba(16, 21, 28, 0.05);
   --shadow-2: 0 4px 12px rgba(16, 21, 28, 0.08);
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --bg: #0d1117;
-    --surface: #161b22;
-    --surface-2: #1c2430;
-    --border: #2a323d;
-    --border-2: #3d4753;
-    --text: #e9edf2;
-    --muted: #a3adba;
-    --subtle: #7d8794;
-    --brand: #5b9bff;
-    --brand-hover: #7db0ff;
-    --brand-soft: #14263f;
-    --ring: rgba(91, 155, 255, 0.4);
-    --ok: #4ac795;
-    --ok-soft: #12291f;
-    --bad: #ff7b87;
-    --bad-soft: #2d1418;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.45);
-  }
 }
 
 * { box-sizing: border-box; }
