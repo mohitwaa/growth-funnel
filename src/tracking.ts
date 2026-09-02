@@ -69,6 +69,8 @@ export interface Destination {
 export const config = {
   webhookUrl: (import.meta.env.VITE_WEBHOOK_URL ?? '').trim(),
   metaPixelId: (import.meta.env.VITE_META_PIXEL_ID ?? '').trim(),
+  /** Independent failure sink. Must NOT be the same host as webhookUrl. */
+  deadLetterUrl: (import.meta.env.VITE_DEAD_LETTER_URL ?? '').trim(),
   debug: new URLSearchParams(location.search).get('debug') === '1',
 };
 
@@ -127,42 +129,13 @@ const MAX_JOBS = 100;
 let outbox: Job[] = [];
 let flushing = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
-const watchers = new Set<(o: OutboxState) => void>();
-
-export interface OutboxState {
-  pending: number;
-  failed: number;
-  oldestAgeMs: number;
-}
-
-function state(): OutboxState {
-  const now = Date.now();
-  return {
-    pending: outbox.length,
-    failed: outbox.filter((j) => j.tries >= MAX_TRIES).length,
-    oldestAgeMs: outbox.length ? now - Math.min(...outbox.map((j) => j.firstAt)) : 0,
-  };
-}
 
 function persist(): void {
   try {
     localStorage.setItem(OUTBOX, JSON.stringify(outbox.slice(-MAX_JOBS)));
   } catch {
-    /* ignore */
+    /* private mode */
   }
-  const s = state();
-  watchers.forEach((fn) => fn(s));
-}
-
-/** Subscribe to outbox health. Returns an unsubscribe function. */
-export function onOutbox(fn: (s: OutboxState) => void): () => void {
-  watchers.add(fn);
-  fn(state());
-  return () => void watchers.delete(fn);
-}
-
-export function outboxState(): OutboxState {
-  return state();
 }
 
 async function attempt(job: Job): Promise<'ok' | 'retry' | 'drop'> {
@@ -222,15 +195,33 @@ function schedule(): void {
   );
 }
 
-/** Last-resort notification that an event was lost, for operator visibility. */
+/**
+ * Report a permanently-lost event.
+ *
+ * This MUST NOT go to the webhook that just failed six times - that was the
+ * original bug: the failure report died for the same reason the event did, so
+ * permanent losses were invisible. It goes to an independent sink instead.
+ * If none is configured we at least leave a durable local record, so the loss
+ * is recoverable from the browser rather than silent.
+ */
 function reportDead(job: Job): void {
+  if (config.deadLetterUrl) {
+    try {
+      navigator.sendBeacon(
+        config.deadLetterUrl,
+        new Blob([job.body], { type: 'application/json' }),
+      );
+      return;
+    } catch {
+      /* fall through to the local record */
+    }
+  }
   try {
-    navigator.sendBeacon(
-      `${job.url}${job.url.includes('?') ? '&' : '?'}dead_letter=1`,
-      new Blob([job.body], { type: 'application/json' }),
-    );
+    const log = JSON.parse(localStorage.getItem('__lost') ?? '[]');
+    log.push({ at: Date.now(), error: job.lastError, body: job.body });
+    localStorage.setItem('__lost', JSON.stringify(log.slice(-20)));
   } catch {
-    /* nothing more we can do from the browser */
+    /* nothing further is possible from the browser */
   }
 }
 
@@ -311,10 +302,6 @@ export function initTracking(): void {
       console.warn(`[tracking] ${d.name} init failed`, err);
     }
   }
-}
-
-export function getIdentity(): Identity {
-  return identity;
 }
 
 /** Returns the dedupe key so the caller can send the same id to the server. */

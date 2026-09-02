@@ -3,6 +3,118 @@
   "nodes": [
     {
       "parameters": {
+        "content": "## Funnel → Meta CAPI → Airtable\n\n**One POST per event** from the browser outbox. `action` in the body decides\nwhat happens here — see the switch below.\n\nTwo rules this flow exists to enforce:\n\n1. **`event_id` passes through untouched.** Meta merges the browser Pixel\n   event and this server event only if both carry the same id. Regenerate it\n   and you double-count every conversion.\n2. **`private` never reaches Meta.** It holds health/disability answers.\n   Meta gets a derived `lead_quality_tier` instead.",
+        "height": 300,
+        "width": 460,
+        "color": 4
+      },
+      "id": "n-overview",
+      "name": "Note n-overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### The `action` switch\n\n| value | what happens |\n|---|---|\n| `track_only` | Airtable only |\n| `meta_capi` | + CAPI |\n| `meta_capi_and_crm` | + CAPI, full lead |\n\nRemap in `ACTIONS` at the top of\n`src/destinations.ts` — not here.",
+        "height": 240,
+        "width": 460,
+        "color": 6
+      },
+      "id": "n-actions",
+      "name": "Note n-actions",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 1. Map\n\nPayload → the 82-field Airtable schema.\n\n- `lead_key` = session id → **one row per lead**, not per event\n- `client_ip` from `x-forwarded-for`, never the client body (spoofable)\n- SHA-256 is **inlined**: n8n's sandbox blocks `require('crypto')`.\n  That failure hit only `lead_submitted` — the one event hashing consent —\n  so 9 of 10 events looked healthy.\n- nulls are stripped, so a later partial event can't blank earlier data",
+        "height": 300,
+        "width": 400,
+        "color": 7
+      },
+      "id": "n-map",
+      "name": "Note n-map",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 2–3. Read, then guard\n\nReplayed events arrive **out of order** — a retried `funnel_start` can land\nafter `lead_submitted`.\n\nWithout the guard that downgraded a closed **$72** lead back to a **$0.50**\npartial. Observed, not theoretical.\n\nThe GET costs one Airtable call per event. That is the price of ordering\nsafety; batch or drop `track_only` if you approach the 5 req/s limit.",
+        "height": 300,
+        "width": 420,
+        "color": 3
+      },
+      "id": "n-guard",
+      "name": "Note n-guard",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 4. Upsert\n\n`performUpsert` on `lead_key`.\n\nRetries are safe **because** of this: the browser outbox retries, and an\nevent that already landed is absorbed rather than duplicated.\n\nFailure → Dead Letter (red branch), never a lost lead.",
+        "height": 240,
+        "width": 340,
+        "color": 3
+      },
+      "id": "n-upsert",
+      "name": "Note n-upsert",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        400,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### 5–6. Meta CAPI\n\n`hash_these` arrives pre-normalised (trimmed, lowercased, phone E.164).\n**SHA-256 it exactly as given** — re-normalising silently kills match quality.\n\n**Never hash `send_plain`** (`fbp`, `fbc`, IP, user-agent).\n\n`event_id` is copied verbatim from the Pixel. That is the whole dedupe\ncontract.\n\nSet `TEST_EVENT_CODE` in the Code node to verify in Events Manager, then\nclear it.",
+        "height": 320,
+        "width": 420,
+        "color": 5
+      },
+      "id": "n-capi",
+      "name": "Note n-capi",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        760,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Dead Letter\n\nAirtable and CAPI failures land here with stage, payload and error —\nreplayable, not lost.\n\n⚠️ Nothing alerts on this table. Add a Slack/email node if you want failures\nto find *you* rather than waiting to be discovered.",
+        "height": 220,
+        "width": 420,
+        "color": 2
+      },
+      "id": "n-dlq",
+      "name": "Note n-dlq",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        760,
+        420
+      ]
+    },
+    {
+      "parameters": {
         "httpMethod": "POST",
         "path": "funnel-events",
         "responseMode": "responseNode",
@@ -81,7 +193,7 @@
     },
     {
       "parameters": {
-        "jsCode": "/*\n * HIGH-WATER MARK GUARD.\n * Replayed events arrive out of order — a retried funnel_start can land AFTER\n * lead_submitted. Without this, last-write-wins downgrades a completed $72\n * lead back to a $0.50 partial. Verified failure mode, not theoretical.\n */\nconst mapped = $('Map to Airtable schema').first().json;\nconst found = $input.first().json;\nconst existing = (found?.records ?? [])[0]?.fields ?? {};\n\nconst storedRank = existing.highest_event_rank ?? 0;\nconst storedStep = existing.furthest_step ?? 0;\n\nconst RANK_GUARDED = [\n  'phase', 'status', 'value_usd', 'grade', 'grade_score', 'grade_version',\n  'highest_event_type', 'highest_event_rank', 'step_reached_at',\n  'email', 'first_name', 'last_name', 'phone_e164', 'zip', 'answers_json',\n];\n\nconst fields = { ...mapped.fields };\n\nif (mapped.rank < storedRank) {\n  for (const k of RANK_GUARDED) delete fields[k];\n}\n// furthest_step advances independently of event rank\nif ((fields.furthest_step ?? 0) < storedStep) {\n  delete fields.furthest_step;\n  delete fields.furthest_step_id;\n}\n\nreturn [{ json: { ...mapped, fields, regressive: mapped.rank < storedRank } }];"
+        "jsCode": "/*\n * HIGH-WATER MARK GUARD.\n * Replayed events arrive out of order — a retried funnel_start can land AFTER\n * lead_submitted. Without this, last-write-wins downgrades a completed $72\n * lead back to a $0.50 partial. Verified failure mode, not theoretical.\n */\nconst mapped = $('Map to Airtable schema').first().json;\nconst found = $input.first().json;\nconst existing = (found?.records ?? [])[0]?.fields ?? {};\n\nconst storedRank = existing.highest_event_rank ?? 0;\nconst storedStep = existing.furthest_step ?? 0;\n\nconst RANK_GUARDED = [\n  'phase', 'status', 'value_usd', 'grade', 'grade_score', 'grade_version',\n  'highest_event_type', 'highest_event_rank', 'step_reached_at',\n  'email', 'first_name', 'last_name', 'phone_e164', 'zip', 'answers_json',\n];\n\n/*\n * Drop-off fields need the opposite rule: they must be CLEARED once a lead\n * converts, not merely protected. `funnel_abandoned` fires on\n * visibilitychange, so a user who switches tabs mid-funnel and then converts\n * would otherwise keep dropped_at_step set forever and show up in the\n * drop-off report as a lost lead.\n */\nconst DROP_FIELDS = ['dropped_at_step', 'dropped_at', 'time_to_interactive_ms'];\n\nconst fields = { ...mapped.fields };\n\nif (mapped.rank < storedRank) {\n  for (const k of RANK_GUARDED) delete fields[k];\n  for (const k of DROP_FIELDS) delete fields[k];\n}\n\n// Converting un-marks an earlier abandonment.\nif (mapped.fields.phase === 'complete') {\n  for (const k of DROP_FIELDS) fields[k] = null;\n}\n// furthest_step advances independently of event rank\nif ((fields.furthest_step ?? 0) < storedStep) {\n  delete fields.furthest_step;\n  delete fields.furthest_step_id;\n}\n\nreturn [{ json: { ...mapped, fields, regressive: mapped.rank < storedRank } }];"
       },
       "id": "guard",
       "name": "High-water guard",
