@@ -80,8 +80,6 @@ Append to `steps` in `funnel.ts`:
 
 ## The webhook
 
-Full contract in [n8n/README.md](n8n/README.md).
-
 **Every** event POSTs to `VITE_WEBHOOK_URL`. Until it's set, the payload is logged instead (`?debug=1`) and nothing is sent.
 
 One key routes it:
@@ -117,10 +115,20 @@ Qualification answers are special-category data (health, disability, finances) t
 - `event.user` (PII) reaches only destinations flagged `acceptsPii`.
 - Ad platforms get `adParams()` instead: `lead_quality_tier`, `lead_score`, `qualified` — same optimization signal, none of the exposure.
 
+## The automation layer
+
+Lives in n8n, not in this repo — it is edited there, so a copy here would go
+stale the moment anyone touches the canvas.
+
+n8n receives every event, upserts one row per lead into Airtable, and forwards
+the conversion to the Meta Conversions API **reusing `event.id` verbatim**.
+That reuse is the entire deduplication contract; change it there and this app's
+Pixel events stop merging with the server ones.
+
 ## Verifying
 
 1. `?debug=1` — each event fires once with a unique dedupe key
-2. Events Manager → Test Events with `META_TEST_EVENT_CODE`
+2. Events Manager → Test Events with a test event code
 3. Confirm the pair shows **Deduplicated**, not two events
 4. Check Event Match Quality — expect 8+/10
 
