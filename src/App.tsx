@@ -4,7 +4,7 @@ import {
   scoreLead, valueOf, visibleSteps, type Answers,
 } from './funnel';
 import { Button, LeadForm, Progress, Question, Result, type Contact } from './screens';
-import { track, uuid } from './tracking';
+import { conversionId, track } from './tracking';
 
 /** All funnel state and every tracking call live here. Screens are pure. */
 export default function App() {
@@ -12,8 +12,6 @@ export default function App() {
   const [index, setIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [startedAt] = useState(Date.now);
-  /** Stable conversion ids, so a retry is not a second conversion. */
-  const eventIds = useRef<{ contact: string; lead: string } | null>(null);
   /** Live step info for the unload handler — refs, so the listener never goes stale. */
   const live = useRef({ stepIndex: 1, stepId: '', total: 0, enteredAt: Date.now(), done: false });
 
@@ -81,18 +79,27 @@ export default function App() {
 
     const user = { ...contact };
 
-    // Generate the conversion ids ONCE and reuse them on every retry. A retry
-    // with a fresh id is a second conversion as far as Meta is concerned, so a
-    // request that succeeded but lost its response would be double-counted.
-    if (!eventIds.current) {
-      eventIds.current = { contact: uuid(), lead: uuid() };
-    }
+    /*
+     * The lead IS the phone number, so the conversion ids derive from it.
+     *
+     * That makes them stable two ways at once: a retry reuses the same id (a
+     * fresh one would be a second conversion to Meta), and so does the SAME
+     * PERSON on a second device — where localStorage is empty and the guard
+     * below cannot see them. Meta then merges the two on event_id, which is
+     * the only thing that can: by the time the server knows it is a duplicate,
+     * that device's Pixel has already reported the conversion.
+     */
+    const leadKey = contact.phone;
+    const ids = {
+      contact: conversionId(leadKey, 'contact_captured'),
+      lead: conversionId(leadKey, 'lead_submitted'),
+    };
 
     // Fired before the request so the signal survives a failed submission.
     track('contact_captured', adParams(score), {
       value: valueOf(funnel.values.contact, score.grade),
       user,
-      eventId: eventIds.current.contact,
+      eventId: ids.contact,
     });
 
     /*
@@ -101,7 +108,6 @@ export default function App() {
      * produce a second conversion. n8n's phone lookup is the backstop for the
      * cross-device case this cannot see.
      */
-    const leadKey = contact.phone;
     if (alreadyConverted(leadKey)) {
       live.current.done = true;
       setIndex((i) => i + 1);
@@ -129,7 +135,7 @@ export default function App() {
       {
         value: leadValue,
         user,
-        eventId: eventIds.current.lead,
+        eventId: ids.lead,
         // First-party only. Raw answers are special-category data and are
         // stripped before any ad-platform destination sees them.
         private: {

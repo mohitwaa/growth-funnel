@@ -134,6 +134,7 @@ const webhook: Destination = {
   send(event, id) {
     const metaEventName = META_EVENTS[event.name];
     const phone = event.user?.phone?.replace(/\D/g, '');
+    const phoneE164 = phone ? (phone.length === 10 ? `1${phone}` : phone) : null;
 
     const payload = {
       // === THE SWITCH KEY ====================================================
@@ -203,11 +204,25 @@ const webhook: Destination = {
             user_data: {
               hash_these: {
                 em: norm(event.user?.email),
-                ph: phone ? (phone.length === 10 ? `1${phone}` : phone) : null, // E.164
+                ph: phoneE164,
                 fn: norm(event.user?.firstName),
                 ln: norm(event.user?.lastName),
                 zp: norm(event.user?.zip),
-                external_id: id.userId,
+                /*
+                 * TWO external_ids, not one.
+                 *
+                 * A per-browser id alone tells Meta that the same person on a
+                 * phone and a laptop is two people — it actively suppresses
+                 * match quality instead of being merely neutral. Sending the
+                 * anon id AND the phone lets Meta stitch the anonymous browsing
+                 * session to the identified person, and both devices to each
+                 * other. Meta accepts external_id as an array; the server
+                 * hashes each entry.
+                 *
+                 * The browser Pixel keeps the anon id only, because advanced
+                 * matching can be set just once, on the pixel's first init.
+                 */
+                external_id: [id.userId, phoneE164].filter(Boolean),
               },
               send_plain: {
                 fbp: id.fbp,

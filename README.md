@@ -74,7 +74,7 @@ Append to `steps` in `funnel.ts`:
 | `fbc` | Cookie, or built from `fbclid` in `index.html`. **Overwritten on every new `fbclid`** so a returning visitor's conversion isn't credited to the old campaign |
 | `client_ip_address` | Request socket, server-side — never a client field |
 | `em ph fn ln` | SHA-256, trimmed + lowercased; phone as E.164 |
-| `external_id` | Hashed stable id — cross-session matching, zero PII |
+| `external_id` | **Array**: the anon browser id **and** the phone. One id alone tells Meta that the same person on two devices is two people; sending both stitches the anonymous session to the person, and the devices to each other. The Pixel keeps the anon id only — advanced matching can be set just once, on first `init` |
 
 **Value.** Every conversion carries a value from the lead grade. An A lead is worth ~4.5× a D lead, so Meta optimizes for quality not volume.
 

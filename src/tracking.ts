@@ -82,6 +82,42 @@ export function uuid(): string {
   });
 }
 
+/**
+ * A conversion belongs to a PERSON, not to a browser.
+ *
+ * Meta merges two events only when `event_name` AND `event_id` both match. A
+ * random id per session means the same person converting on their phone and
+ * again on their laptop counts twice — and the second one is credited to
+ * whichever campaign brought them back, stealing it from the campaign that
+ * actually earned it. No server-side suppression can undo that, because the
+ * browser Pixel has already reported it.
+ *
+ * Deriving the id from the lead key makes every device produce the SAME id, so
+ * Meta's own deduplication collapses them. Outside Meta's dedupe window a
+ * genuine re-inquiry counts again, which is the behaviour we want.
+ *
+ * Note this is per (lead, event_name) — NOT one id per user. A single id for
+ * every event would collapse the whole funnel into one event.
+ */
+export function conversionId(leadKey: string, eventName: string): string {
+  const seed = `${leadKey}|${eventName}`;
+  let a = 0x811c9dc5, b = 0x01000193, c = 0x9e3779b9, d = 0x85ebca6b;
+  for (let i = 0; i < seed.length; i++) {
+    const ch = seed.charCodeAt(i);
+    a = Math.imul(a ^ ch, 0x01000193) >>> 0;
+    b = Math.imul(b ^ (ch + 1), 0x01000193) >>> 0;
+    c = Math.imul(c ^ (ch + 2), 0x01000193) >>> 0;
+    d = Math.imul(d ^ (ch + 3), 0x01000193) >>> 0;
+  }
+  const mix = (n: number) => {
+    n = Math.imul(n ^ (n >>> 16), 0x7feb352d) >>> 0;
+    n = Math.imul(n ^ (n >>> 15), 0x846ca68b) >>> 0;
+    return ((n ^ (n >>> 16)) >>> 0).toString(16).padStart(8, '0');
+  };
+  const hex = mix(a) + mix(b) + mix(c) + mix(d);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
 function cookie(name: string): string | null {
   return document.cookie.match(`(^|;\\s*)${name}=([^;]*)`)?.[2] ?? null;
 }
