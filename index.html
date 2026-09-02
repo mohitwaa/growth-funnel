@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Benefits Qualification — Check Your Eligibility Free</title>
+    <meta
+      name="description"
+      content="Find out in 60 seconds if you qualify. Free, no-obligation eligibility check."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
+    <!--
+      Capture click IDs synchronously, before the bundle parses.
+
+      This must stay first and inline. If it ran inside React, a slow load or a
+      JS error would lose gclid/fbclid permanently — there is no second chance
+      at attribution.
+    -->
+    <script>
+      (function () {
+        try {
+          var incoming = {};
+          new URLSearchParams(location.search).forEach(function (v, k) {
+            incoming[k.toLowerCase()] = v;
+          });
+
+          // First touch wins for reporting — a later visit never overwrites the
+          // original source. Merge into a NEW object: Object.assign mutates its
+          // target, which would clobber the fresh fbclid read below.
+          var saved = JSON.parse(localStorage.getItem('__clickids') || '{}');
+          localStorage.setItem('__clickids', JSON.stringify(Object.assign({}, incoming, saved)));
+
+          // Build _fbc from fbclid. Always overwrite when a fbclid is present:
+          // a returning visitor clicking a NEW ad must not keep the old click
+          // id, or the conversion is attributed to the wrong campaign.
+          if (incoming.fbclid) {
+            document.cookie =
+              '_fbc=fb.1.' + Date.now() + '.' + incoming.fbclid +
+              ';path=/;max-age=7776000;SameSite=Lax';
+          }
+        } catch (e) {}
+      })();
+    </script>
+
+    <!-- Consent Mode v2 defaults. Must run before any Google or Meta tag. -->
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag() { window.dataLayer.push(arguments); }
+      window.gtag = gtag;
+      gtag('consent', 'default', {
+        ad_storage: 'granted',
+        ad_user_data: 'granted',
+        ad_personalization: 'granted',
+        analytics_storage: 'granted',
+      });
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <p style="padding: 24px; font: 16px/1.5 system-ui">
+        This eligibility check requires JavaScript. Please enable it to continue.
+      </p>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
