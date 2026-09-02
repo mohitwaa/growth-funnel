@@ -213,6 +213,36 @@ input { font: inherit; font-size: 16px; }
 .field input:disabled { background: var(--surface-2); cursor: not-allowed; }
 .field.is-invalid input { border-color: var(--bad); }
 
+/* Phone dial code. The wrapper owns the chrome so the prefix and the input read
+   as one control, and its 52px box matches every other input exactly. */
+.field__box {
+  display: flex; align-items: center; height: 52px;
+  background: var(--surface);
+  border: 1.5px solid var(--border); border-radius: var(--radius);
+  transition: border-color 0.12s var(--ease), box-shadow 0.12s var(--ease);
+}
+.field__box:hover { border-color: var(--border-2); }
+.field__box:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--ring); }
+.field.is-invalid .field__box { border-color: var(--bad); }
+.field__box.is-disabled { background: var(--surface-2); }
+.field__box.is-disabled:hover { border-color: var(--border); }
+
+.field__dial {
+  flex: none; align-self: stretch; display: flex; align-items: center;
+  padding: 0 12px 0 16px; margin-right: 12px;
+  border-right: 1.5px solid var(--border);
+  color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.field__box.is-disabled .field__dial { color: var(--subtle); }
+
+/* Chrome-free inside the wrapper — one border and one focus ring, never two. */
+.field__box input {
+  flex: 1; min-width: 0; height: 100%; padding: 0 16px 0 0;
+  border: none; background: none;
+}
+.field__box input:focus { box-shadow: none; }
+.field__box input:disabled { background: none; }
+
 .error { font-size: 13.5px; color: var(--bad); animation: fade 0.12s var(--ease); }
 .consent { font-size: 11.5px; line-height: 1.55; color: var(--subtle); }
 

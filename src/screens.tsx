@@ -224,6 +224,28 @@ export function LeadForm({
           const takeRef = Boolean(error) && !refTaken;
           if (takeRef) refTaken = true;
 
+          // The dial code is chrome, not a value: this funnel is US-only, so the
+          // input still holds the 10 national digits and `tel-national` autofill
+          // keeps matching. It is described to screen readers, not just drawn.
+          const dial = f.name === 'phone';
+          const describedBy = [dial && 'phone-dial', error && `${f.name}-err`].filter(Boolean).join(' ');
+
+          const input = (
+            <input
+              id={f.name}
+              ref={takeRef ? firstBad : undefined}
+              type={f.type}
+              inputMode={f.mode}
+              autoComplete={f.auto}
+              value={values[f.name]}
+              disabled={submitting}
+              aria-invalid={Boolean(error)}
+              aria-describedby={describedBy || undefined}
+              onChange={(e) => change(f.name, e.target.value)}
+              onBlur={() => setErrors((e) => ({ ...e, [f.name]: validate(f.name, values[f.name]) }))}
+            />
+          );
+
           return (
             <div key={f.name} className={`field${error ? ' is-invalid' : ''}`}>
               {/* Label above the input. A placeholder is not a label. */}
@@ -231,19 +253,16 @@ export function LeadForm({
                 {f.label}
                 {f.name === 'zip' && <span className="optional"> (optional)</span>}
               </label>
-              <input
-                id={f.name}
-                ref={takeRef ? firstBad : undefined}
-                type={f.type}
-                inputMode={f.mode}
-                autoComplete={f.auto}
-                value={values[f.name]}
-                disabled={submitting}
-                aria-invalid={Boolean(error)}
-                aria-describedby={error ? `${f.name}-err` : undefined}
-                onChange={(e) => change(f.name, e.target.value)}
-                onBlur={() => setErrors((e) => ({ ...e, [f.name]: validate(f.name, values[f.name]) }))}
-              />
+              {dial ? (
+                <div className={`field__box${submitting ? ' is-disabled' : ''}`}>
+                  <span className="field__dial" id="phone-dial">
+                    +1
+                  </span>
+                  {input}
+                </div>
+              ) : (
+                input
+              )}
               {error && (
                 <p className="error" id={`${f.name}-err`}>
                   {error}
