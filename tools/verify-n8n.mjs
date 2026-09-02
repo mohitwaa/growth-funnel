@@ -31,8 +31,12 @@ t('N1 no null fields sent', !Object.values(mapped.fields).some(v => v === null),
 
 // Node 2 — fresh
 const guardFn = code('High-water guard');
-const runGuard = (m, rank, step) => new Function('$input','$', guardFn)(
-  { first: () => ({ json: { records: rank ? [{ fields:{ highest_event_rank: rank, furthest_step: step } }] : [] } }) },
+// A real Airtable row always carries lead_key - the guard matches on it.
+const runGuard = (m, rank, step, extraRows = []) => new Function('$input','$', guardFn)(
+  { first: () => ({ json: { records: [
+      ...(rank ? [{ fields: { lead_key: m.leadKey, highest_event_rank: rank, furthest_step: step } }] : []),
+      ...extraRows.map((f) => ({ fields: f })),
+  ] } }) },
   () => ({ first: () => ({ json: m }) })
 )[0].json;
 
@@ -42,6 +46,20 @@ t('N2 fresh lead keeps all fields', fresh.fields.phase === 'complete' && fresh.f
 const regress = runGuard({ ...mapped, rank: 1, fields: { ...mapped.fields, highest_event_rank: 1, value_usd: 0.5, phase: 'partial' } }, 4, 7);
 t('N2 regressive event stripped', !('phase' in regress.fields) && !('value_usd' in regress.fields), 'phase+value_usd removed');
 t('N2 lead_key survives strip', regress.fields.lead_key === mapped.leadKey, 'kept');
+
+// N2c — cross-device duplicate: a DIFFERENT lead_key carrying the SAME phone.
+// This is the case the browser's localStorage guard cannot see.
+const converting = { ...mapped, fields: { ...mapped.fields, phase: 'complete', phone_e164: '+13125550144' } };
+const crossDevice = runGuard(converting, 0, 0, [
+  { lead_key: 'some-other-session', phone_e164: '+13125550144', phase: 'complete' },
+]);
+t('N2c cross-device duplicate flagged', crossDevice.fields.status === 'duplicate', crossDevice.fields.status);
+t('N2c duplicate suppresses CAPI', crossDevice.meta.should_send === false, crossDevice.meta.should_send);
+
+const differentPhone = runGuard(converting, 0, 0, [
+  { lead_key: 'some-other-session', phone_e164: '+19998887777', phase: 'complete' },
+]);
+t('N2c different phone NOT flagged', differentPhone.fields.status !== 'duplicate', differentPhone.fields.status ?? '(unset)');
 
 // Node 3 — CAPI body
 const capi = new Function('$','$vars','require', code('Hash PII → CAPI body'))(
