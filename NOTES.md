@@ -36,6 +36,7 @@ So the diagnosis wasn't "collect more data", it was **"activate the data you alr
 - **Lead scoring → value-based bidding.** An A lead sends `value: 72`, a D sends `15.75`, so Meta optimises for quality rather than volume.
 - **Attribution correctness** — `_fbc` follows the *latest* click (Meta's semantics) while `click_ids` keeps first touch. Getting this wrong credits a returning visitor's conversion to the wrong campaign.
 - **Dead Letter table** + browser dead-letter beacon, so failures are visible and replayable.
+- **Conversion gating**, modelled on the reference funnel's own logic. Reading its `/result` `executionLog` showed the conversion is gated behind `ctc_clicked != true`, `user_found == false` and a grade/age band — it is not fired on every submit. We implement the same three gates, with one deliberate difference: a lead below the grade bar still sends a conversion at low value rather than nothing, because Meta's model needs weak leads to learn what a strong one looks like.
 - **`tools/verify-n8n.mjs`** — runs the n8n Code nodes against a captured payload, 28 assertions. Re-runnable after any edit.
 
 ## Bugs this process caught

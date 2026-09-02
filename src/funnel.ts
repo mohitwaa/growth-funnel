@@ -191,3 +191,45 @@ export function adParams(score: Score) {
     qualified: score.qualified,
   };
 }
+
+/*
+ * CONVERSION POLICY
+ *
+ * Modelled on the reference funnel, whose result page gates its conversion
+ * behind three conditions before anything reaches an ad platform:
+ *   ctc_clicked != true   - fire once, never twice
+ *   user_found == false   - suppress known/duplicate leads
+ *   grade + age band      - only leads worth bidding on
+ *
+ * One deliberate difference: they send NOTHING for a lead below the grade bar.
+ * We send it at a low value instead. Meta's model learns from the contrast
+ * between good and bad leads; feeding it only A-grades removes the negative
+ * signal it needs to tell them apart.
+ */
+export const conversionPolicy = {
+  /** Grades that count as a full-value conversion. */
+  fullValueGrades: ['A', 'B'] as Grade[],
+  /** Sent for a lead below that bar, so the model still sees it. */
+  lowValue: 5,
+};
+
+/**
+ * Fire-once guard, keyed on the LEAD (phone), not the session.
+ * Catches the common duplicate: the same person resubmitting in this browser.
+ * The n8n phone lookup is the backstop for the cross-device case.
+ */
+export function alreadyConverted(leadKey: string): boolean {
+  try {
+    return localStorage.getItem('__converted') === leadKey;
+  } catch {
+    return false;
+  }
+}
+
+export function markConverted(leadKey: string): void {
+  try {
+    localStorage.setItem('__converted', leadKey);
+  } catch {
+    /* private mode - n8n still catches it */
+  }
+}

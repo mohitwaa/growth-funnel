@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { adParams, funnel, scoreLead, valueOf, visibleSteps, type Answers } from './funnel';
+import {
+  adParams, alreadyConverted, conversionPolicy, funnel, markConverted,
+  scoreLead, valueOf, visibleSteps, type Answers,
+} from './funnel';
 import { Button, LeadForm, Progress, Question, Result, type Contact } from './screens';
 import { track, uuid } from './tracking';
 
@@ -92,13 +95,39 @@ export default function App() {
       eventId: eventIds.current.contact,
     });
 
+    /*
+     * Fire-once guard, keyed on the LEAD (the phone number), not the session.
+     * A person who resubmits - refresh, back button, second device - must not
+     * produce a second conversion. n8n's phone lookup is the backstop for the
+     * cross-device case this cannot see.
+     */
+    const leadKey = contact.phone;
+    if (alreadyConverted(leadKey)) {
+      live.current.done = true;
+      setIndex((i) => i + 1);
+      setSubmitting(false);
+      return;
+    }
+    markConverted(leadKey);
+
+    // Below the grade bar we still send the conversion, at a low value. Meta
+    // needs to see weak leads to learn what a strong one looks like.
+    const fullValue = conversionPolicy.fullValueGrades.includes(score.grade);
+    const leadValue = fullValue
+      ? valueOf(funnel.values.lead, score.grade)
+      : conversionPolicy.lowValue;
+
     // This id is the dedupe key: the Pixel just fired with it, and the webhook
     // receives the same value to reuse on its CAPI call. Meta merges the two.
     track(
       'lead_submitted',
-      { ...adParams(score), seconds_to_convert: Math.round((Date.now() - startedAt) / 1000) },
       {
-        value: valueOf(funnel.values.lead, score.grade),
+        ...adParams(score),
+        seconds_to_convert: Math.round((Date.now() - startedAt) / 1000),
+        full_value: fullValue,
+      },
+      {
+        value: leadValue,
         user,
         eventId: eventIds.current.lead,
         // First-party only. Raw answers are special-category data and are
